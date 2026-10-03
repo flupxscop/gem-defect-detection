@@ -1,5 +1,6 @@
 const CACHE_NAME = "gemscan-models-v1";
 
+/** `total` is 0 when the final size isn't known. */
 export type Progress = (loaded: number, total: number) => void;
 
 /**
@@ -15,9 +16,11 @@ export async function fetchModel(url: string, onProgress: Progress): Promise<Arr
     return buffer;
   }
 
-  const response = await fetch(url);
+  // No Referer: huggingface.co rejects downloads referred from some hosts (e.g. *.workers.dev).
+  const response = await fetch(url, { referrerPolicy: "no-referrer" });
   if (!response.ok || !response.body) throw new Error(`Download failed (${response.status}): ${url}`);
-  const total = Number(response.headers.get("content-length")) || 0;
+  // Content-Length is the compressed size when the CDN compresses, so it's only a hint.
+  const length = Number(response.headers.get("content-length")) || 0;
 
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -27,7 +30,7 @@ export async function fetchModel(url: string, onProgress: Progress): Promise<Arr
     if (done) break;
     chunks.push(value);
     loaded += value.byteLength;
-    onProgress(loaded, total || loaded);
+    onProgress(loaded, length >= loaded ? length : 0);
   }
 
   const buffer = new Uint8Array(loaded);

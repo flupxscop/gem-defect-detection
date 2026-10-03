@@ -11,7 +11,8 @@ All numbers below were measured, not estimated. Reproduce them with the commands
 
 ## Browser inference (live demo)
 
-Measured on https://chantarontw-gemscan.static.hf.space and the local production build (`vite preview`).
+Measured on https://gemscan.nanthawatchan28.workers.dev (Cloudflare), https://chantarontw-gemscan.static.hf.space
+(Hugging Face) and the local production build (`vite preview`).
 
 | Metric | WebGPU | WASM (4 threads) |
 |---|---:|---:|
@@ -25,6 +26,7 @@ Measured on https://chantarontw-gemscan.static.hf.space and the local production
 | First visit: both models ready (169 MB) | 10.9 s |
 | Return visit: both models ready (Cache Storage, no download) | 4.8 s |
 | Return visit: click a sample → both results on screen | 0.7 s |
+| First visit on Cloudflare, also downloading the 26 MB runtime from jsDelivr: both models ready | 12.1 s |
 
 Download times depend on the visitor's connection; model files are cached in Cache Storage keyed by the pinned
 model-repo commit, so they are fetched once. WASM threads need cross-origin isolation, which the Space enables

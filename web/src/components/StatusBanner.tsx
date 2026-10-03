@@ -38,7 +38,8 @@ export function StatusBanner({ status, onRetry }: { status: EngineStatus; onRetr
         <span>
           {status.downloads.map((d) => (
             <span key={d.model} className="download">
-              Loading {MODEL_LABELS[d.model]} · {mb(d.loaded)} / {mb(d.total)} MB
+              Loading {d.model === "runtime" ? "inference runtime" : MODEL_LABELS[d.model]} · {mb(d.loaded)}
+              {d.total ? ` / ${mb(d.total)}` : ""} MB
             </span>
           ))}
           <span className="micro muted"> Models run in your browser and are cached after the first visit.</span>

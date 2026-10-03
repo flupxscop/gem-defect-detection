@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:cloudflare": "VITE_ORT_WASM_URL=https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/ort-wasm-simd-threaded.asyncify.wasm npm run build && echo '*.wasm' > dist/.assetsignore",
+    "deploy:cloudflare": "npm run build:cloudflare && wrangler deploy"
   },
   "dependencies": {
     "onnxruntime-web": "^1.30.0",
@@ -20,6 +22,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "^5.6.3",
     "vite": "^5.4.11",
-    "vitest": "^2.1.9"
+    "vitest": "^2.1.9",
+    "wrangler": "^4.147.0"
   }
 }

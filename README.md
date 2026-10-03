@@ -1,17 +1,18 @@
 # GemScan: gemstone inclusion detection
 
 [![CI](https://github.com/flupxscop/gem-defect-detection/actions/workflows/ci.yml/badge.svg)](https://github.com/flupxscop/gem-defect-detection/actions/workflows/ci.yml)
-[![Live demo](https://img.shields.io/badge/demo-Hugging%20Face%20Space-yellow)](https://huggingface.co/spaces/ChantaroNtw/gemscan)
+[![Live demo](https://img.shields.io/badge/demo-Cloudflare-orange)](https://gemscan.nanthawatchan28.workers.dev)
 [![Models](https://img.shields.io/badge/models-ONNX-blue)](https://huggingface.co/ChantaroNtw/gemscan-models)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 Detects inclusions (internal flaws) in diamond photos and compares two detector families trained under the
 same settings: **YOLO11s** (CNN) and **RT-DETR-L** (transformer). The project covers the full path from a
 labelled dataset to a deployed web app: data preparation, training, evaluation, ONNX export, in-browser
-inference with WebGPU, a FastAPI service for self-hosting, CI, and free hosting on Hugging Face.
+inference with WebGPU, a FastAPI service for self-hosting, CI, and free hosting on Cloudflare.
 
-**Live demo:** https://chantarontw-gemscan.static.hf.space. The models run on your device, so photos never
-leave the browser.
+**Live demo:** https://gemscan.nanthawatchan28.workers.dev
+([mirror on Hugging Face](https://chantarontw-gemscan.static.hf.space)). The models run on your device, so
+photos never leave the browser.
 
 ![Model comparison](results/comparison.png)
 
@@ -82,7 +83,7 @@ flowchart LR
         TR --> EX[export.py]
     end
     EX -- ONNX + manifest --> HUB[(HF model repo<br/>pinned revision)]
-    subgraph Live ["Live demo: HF static Space"]
+    subgraph Live ["Live demo: Cloudflare Workers static assets"]
         WEB[React app] --> WK[Web Worker<br/>onnxruntime-web<br/>WebGPU / WASM]
     end
     HUB -- "download once,<br/>Cache Storage" --> WK
@@ -92,7 +93,7 @@ flowchart LR
     HUB -- docker build --> API
 ```
 
-- **Inference in the browser.** The live demo is a static site. A Web Worker loads the ONNX models with
+- **Inference in the browser.** The live demo is a static site on Cloudflare. A Web Worker loads the ONNX models with
   onnxruntime-web and runs them on WebGPU, falling back to multi-threaded WASM. Hosting costs nothing, there is
   no server to scale or wake up, and uploaded photos stay on the device.
 - **Model registry.** Weights live in a Hugging Face model repo, not in Git. The web app and the Docker build
@@ -155,19 +156,27 @@ RT-DETR-L 4 → 2), because batch 16 at 640 px fills an 8 GB Mac's shared memory
 
 ## Deployment
 
-Free tiers only: GitHub for code and CI, Hugging Face for the model repo and a static Space.
+Free tiers only: Cloudflare for the site, Hugging Face for the model repo, GitHub for code and CI.
 
 ```bash
 huggingface-cli login
 python scripts/publish_models.py --repo <user>/gemscan-models    # prints the commit to pin
 # set that commit as MODEL_REVISION in web/src/config.ts
-cd web && npm ci && npm run build && cd ..
-python scripts/deploy_space.py --space <user>/gemscan
+
+cd web
+npx wrangler login
+npm run deploy:cloudflare
 ```
 
-The Space sends COOP/COEP headers (configured in its README) so WASM can use multiple threads. Hugging Face
-Docker Spaces now require a paid plan, which is why the live demo runs the models client-side; the Docker image
-is for self-hosting on any container platform.
+`web/wrangler.jsonc` deploys `dist/` as Workers static assets, and `web/public/_headers` adds the COOP/COEP
+headers that let WASM use multiple threads. Cloudflare caps files at 25 MiB and onnxruntime-web's WebGPU runtime
+is 25.5 MiB, so the Cloudflare build fetches that one file from jsDelivr (the same npm package, pinned version)
+and caches it like the models. Model downloads are sent without a `Referer` because huggingface.co rejects
+requests referred from `*.workers.dev`.
+
+The same build also runs on a free Hugging Face static Space: `npm run build` in `web/`, then
+`python scripts/deploy_space.py --space <user>/gemscan`. Hugging Face Docker Spaces need a paid plan, which is
+why the demo runs the models client-side; the Docker image is for self-hosting on any container platform.
 
 ## API (self-hosted server)
 

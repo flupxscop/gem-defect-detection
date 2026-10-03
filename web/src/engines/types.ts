@@ -1,7 +1,7 @@
 import type { ModelName, Prediction } from "../lib/api";
 
 export interface Download {
-  model: ModelName;
+  model: ModelName | "runtime";
   loaded: number;
   total: number;
 }

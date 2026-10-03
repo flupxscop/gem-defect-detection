@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 import * as ort from "onnxruntime-web/webgpu";
 import wasmUrl from "onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm?url";
+import { ORT_WASM_URL } from "../config";
 import type { Prediction } from "../lib/api";
 import { fetchModel } from "./modelStore";
 import { decodeRtDetr, decodeYolo } from "./postprocess";
@@ -36,7 +37,21 @@ if (!self.name.startsWith("em-pthread")) {
 }
 
 async function load(baseUrl: string, backends: Record<string, Backend> = {}) {
-  const manifest: Record<string, Omit<ModelSpec, "name">> = await (await fetch(`${baseUrl}/manifest.json`)).json();
+  let manifest: Record<string, Omit<ModelSpec, "name">>;
+  try {
+    if (ORT_WASM_URL) {
+      // Hand the runtime over as bytes, fetched and cached like the models.
+      ort.env.wasm.wasmBinary = await fetchModel(ORT_WASM_URL, (loaded, total) =>
+        send({ type: "progress", model: "runtime", loaded, total }),
+      );
+    }
+    const response = await fetch(`${baseUrl}/manifest.json`, { referrerPolicy: "no-referrer" });
+    if (!response.ok) throw new Error(`manifest.json: HTTP ${response.status}`);
+    manifest = await response.json();
+  } catch (error) {
+    send({ type: "load-error", model: "runtime", message: String(error) });
+    return;
+  }
   // Smallest model first, so the page becomes usable as early as possible.
   const rank = (name: string) => (manifest[name].family === "yolo" ? 0 : 1);
   const order = Object.keys(manifest).sort((a, b) => rank(a) - rank(b));

@@ -1,7 +1,7 @@
 import { MODEL_BASE_URL } from "../config";
 import type { WorkerRequest, WorkerResponse } from "../detect/protocol";
 import { FETCH_CONF, ModelName, Prediction } from "../lib/api";
-import { Engine, Store } from "./types";
+import { Download, Engine, Store } from "./types";
 
 /** Runs the ONNX models in a Web Worker with onnxruntime-web (WebGPU, falling back to WASM). */
 export function createBrowserEngine(): Engine {
@@ -14,21 +14,26 @@ export function createBrowserEngine(): Engine {
     const status = store.get();
     switch (data.type) {
       case "progress": {
-        const others = status.downloads.filter((d) => d.model !== data.model);
-        store.set({ downloads: [...others, { model: data.model as ModelName, loaded: data.loaded, total: data.total }] });
+        // Each download replaces the previous one; the runtime and models load one after another.
+        store.set({ downloads: [{ model: data.model as Download["model"], loaded: data.loaded, total: data.total }] });
         break;
       }
       case "ready":
         store.set({
           ready: [...status.ready, data.model as ModelName],
-          downloads: status.downloads.filter((d) => d.model !== data.model),
+          downloads: [],
           backend: data.backend,
         });
         break;
       case "load-error":
         store.set({
-          downloads: status.downloads.filter((d) => d.model !== data.model),
-          errors: [...status.errors, `Couldn't load ${data.model}: ${data.message}`],
+          downloads: [],
+          errors: [
+            ...status.errors,
+            data.model === "runtime"
+              ? `Couldn't start the detector: ${data.message}`
+              : `Couldn't load ${data.model}: ${data.message}`,
+          ],
         });
         break;
       case "result":
