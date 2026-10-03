@@ -3,10 +3,12 @@
 Usage:
     python src/train.py --model yolo11s
     python src/train.py --model rtdetr-l --batch 2 --device cpu
+    python src/train.py --model yolo11s --data data/dataset-full/data_fixed.yaml --imgsz 1280 --name yolo11s-1280
 """
 
 import argparse
 import sys
+from pathlib import Path
 
 from common import (
     DATA_YAML,
@@ -16,7 +18,6 @@ from common import (
     PATIENCE,
     RUNS_DIR,
     SEED,
-    best_weights,
     default_batch,
     load_model,
     pick_device,
@@ -34,13 +35,17 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--device", help="cpu, mps, or a CUDA index such as 0 (default: auto)")
     parser.add_argument("--patience", type=int, default=PATIENCE)
+    parser.add_argument("--data", type=Path, default=DATA_YAML, help="dataset YAML (default: data/dataset)")
+    parser.add_argument("--name", help="run name under runs/ (default: the model name)")
+    parser.add_argument("--cache", action="store_true", help="cache decoded images in RAM between epochs")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    if not DATA_YAML.exists():
-        sys.exit(f"{DATA_YAML} not found. Run `python src/download.py` first.")
+    if not args.data.exists():
+        sys.exit(f"{args.data} not found. Run `python src/download.py` first.")
+    name = args.name or args.model
 
     device = args.device or pick_device()
     batch = args.batch or default_batch(args.model, device)
@@ -50,7 +55,7 @@ def main() -> None:
 
     model = load_model(args.model)
     model.train(
-        data=str(DATA_YAML),
+        data=str(args.data),
         epochs=args.epochs,
         imgsz=args.imgsz,
         batch=batch,
@@ -59,13 +64,14 @@ def main() -> None:
         seed=SEED,
         deterministic=True,
         project=str(RUNS_DIR),
-        name=args.model,
+        name=name,
+        cache="ram" if args.cache else False,
         exist_ok=True,
         plots=True,
     )
 
-    print(f"\nBest weights: {best_weights(args.model)}")
-    print(f"Training curves: {RUNS_DIR / args.model / 'results.png'}")
+    print(f"\nBest weights: {RUNS_DIR / name / 'weights' / 'best.pt'}")
+    print(f"Training curves: {RUNS_DIR / name / 'results.png'}")
 
 
 if __name__ == "__main__":

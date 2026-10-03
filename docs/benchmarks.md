@@ -133,3 +133,22 @@ input the predictions are identical (table above).
 - **Warm-up at startup:** the first real request doesn't pay for graph initialisation.
 - **Load shedding:** beyond 16 queued requests the server returns `503` with `Retry-After` instead of piling up.
 - **Static assets:** Vite's fingerprinted bundles are served with `Cache-Control: immutable` and gzip (51 KB of JS).
+
+## Accuracy experiment: higher resolution
+
+The originals are 2584×1936, while the dataset version used for training is resized to 640×640, so the median
+inclusion is only 16 px on its short side. To test whether resolution limits accuracy, YOLO11s was retrained on
+the full-resolution export (`src/download.py --version 2 --out dataset-full`), shrunk to half size and cut into
+640 px tiles (`src/tile.py`, 6 tiles per image, median inclusion 32 px), then evaluated on whole test images at
+imgsz 1280 (`scripts/evaluate.py`).
+
+| Model (16 test images, 117 inclusions) | AP @ IoU 0.5 | AP @ IoU 0.3 | AP @ IoU 0.1 | Max recall @ IoU 0.1 |
+|---|---:|---:|---:|---:|
+| YOLO11s, whole images at 640 | 0.176 | 0.325 | 0.421 | 0.91 |
+| YOLO11s, half-resolution tiles, evaluated at 1280 | 0.161 | 0.292 | 0.403 | 0.84 |
+
+Higher resolution did not help (training early-stopped at epoch 47, best at 27). The gap between IoU 0.5 and
+0.1 shows the models find most labelled inclusions but draw boxes that disagree with the labels, which mix
+one-box-per-flaw with large boxes around groups of flaws. Label consistency, not model capacity or resolution,
+is what limits mAP on this dataset.
+

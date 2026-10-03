@@ -15,7 +15,7 @@ import sys
 import yaml
 from dotenv import load_dotenv
 
-from common import DATA_YAML, DATASET_DIR, ROOT, SEED
+from common import DATA_DIR, DATASET_DIR, ROOT, SEED
 
 REQUIRED_ENV = ["ROBOFLOW_API_KEY", "ROBOFLOW_WORKSPACE", "ROBOFLOW_PROJECT", "ROBOFLOW_VERSION"]
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
@@ -30,6 +30,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--classes", nargs="+", default=DEFAULT_CLASSES, help="class names to keep (case-insensitive), or 'all'"
     )
+    parser.add_argument("--version", type=int, help="Roboflow version (default: ROBOFLOW_VERSION from .env)")
+    parser.add_argument("--out", help="dataset folder name under data/ (default: dataset)")
     return parser.parse_args()
 
 
@@ -165,13 +167,18 @@ def write_data_yaml(names: list) -> dict:
     data["nc"] = len(names)
     data["names"] = names
 
-    DATA_YAML.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True))
+    (DATASET_DIR / "data_fixed.yaml").write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True))
     return data
 
 
 def main() -> None:
+    global DATASET_DIR
     args = parse_args()
+    if args.out:
+        DATASET_DIR = DATA_DIR / args.out
     config = read_config()
+    if args.version:
+        config["ROBOFLOW_VERSION"] = str(args.version)
     download(config)
     converted = convert_polygons()
     if converted:
@@ -180,7 +187,7 @@ def main() -> None:
     ensure_valid_split()
     data = write_data_yaml(names)
 
-    print(f"\nDataset ready: {DATA_YAML}")
+    print(f"\nDataset ready: {DATASET_DIR / 'data_fixed.yaml'}")
     for split in ("train", "valid", "test"):
         print(f"  {split:<5} {len(list_images(split)):>4} images")
     print(f"  classes ({data['nc']}): {', '.join(map(str, data['names']))}")
