@@ -152,3 +152,9 @@ Higher resolution did not help (training early-stopped at epoch 47, best at 27).
 one-box-per-flaw with large boxes around groups of flaws. Label consistency, not model capacity or resolution,
 is what limits mAP on this dataset.
 
+Extra training data was also considered. The inclusion-related datasets on Roboflow Universe were reviewed through
+the Universe search API: `psisaqure/diamond-qesvd` (277 images) mostly boxes dark facet reflections rather than
+inclusions, in a different photo setup; `my-arena/inclusion-detection-ziqka` (219 images) is steel micrographs;
+`labelled-good/inclusion-test` has 16 labels across 200 images. None would help, so the remaining lever is
+relabelling this dataset consistently (`docs/labeling-guide.md`).
+
