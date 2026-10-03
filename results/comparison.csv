@@ -1,0 +1,3 @@
+model,architecture,split,images,precision,recall,mAP50,mAP50-95,ms_per_image,device
+yolo11s,"CNN, one-stage",test,16,0.3903,0.2134,0.1872,0.0587,15.1,mps
+rtdetr-l,Transformer (DETR-based),test,16,0.3566,0.2821,0.1951,0.0667,83.3,mps

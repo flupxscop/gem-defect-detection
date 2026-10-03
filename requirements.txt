@@ -1,0 +1,8 @@
+# Inference server (what runs in the Docker image). No PyTorch needed.
+fastapi==0.142.2
+uvicorn[standard]==0.54.0
+python-multipart==0.0.32
+onnxruntime==1.30.0
+numpy==2.3.5
+opencv-python-headless==5.0.0.93
+pillow==12.3.0

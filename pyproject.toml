@@ -1,0 +1,21 @@
+[project]
+name = "gem-inclusion-detection"
+version = "1.0.0"
+description = "Gemstone inclusion detection: YOLO11 vs RT-DETR, served with ONNX Runtime"
+requires-python = ">=3.10"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+extend-exclude = ["web"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+ignore = ["B008", "RUF001", "RUF002", "RUF003"]  # FastAPI File()/Form() defaults; unicode in strings
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "common", "download"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".", "src"]

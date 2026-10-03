@@ -1,0 +1,8 @@
+*
+!app/
+!results/comparison.csv
+!requirements.txt
+!web/
+web/node_modules/
+web/dist/
+**/__pycache__/

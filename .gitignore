@@ -1,0 +1,30 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Dataset, training runs and weights. Models are published to the
+# Hugging Face model repo instead (scripts/publish_models.py).
+data/
+runs/
+models/
+*.pt
+*.onnx
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Frontend
+web/node_modules/
+web/dist/
+*.tsbuildinfo
+
+# Local tooling and OS files
+.claude/
+.vscode/
+.idea/
+.DS_Store
