@@ -3,7 +3,8 @@ import { MetricsTable } from "./components/MetricsTable";
 import { ResultPanel } from "./components/ResultPanel";
 import { StatusBanner } from "./components/StatusBanner";
 import { UploadStudio } from "./components/UploadStudio";
-import { useBackendStatus } from "./hooks/useBackendStatus";
+import { INFERENCE_MODE } from "./config";
+import { engine, useEngineStatus } from "./engines";
 import { modelsFor, usePredictions } from "./hooks/usePredictions";
 import { MODEL_NAMES, ModelName, Selection } from "./lib/api";
 import { prepareUpload, UploadError } from "./lib/image";
@@ -11,7 +12,7 @@ import { prepareUpload, UploadError } from "./lib/image";
 type Highlight = { model: ModelName; index: number } | null;
 
 export default function App() {
-  const backend = useBackendStatus();
+  const status = useEngineStatus();
   const [file, setFile] = useState<File | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [selection, setSelection] = useState<Selection>("both");
@@ -19,14 +20,8 @@ export default function App() {
   const [highlight, setHighlight] = useState<Highlight>(null);
   const [preparing, setPreparing] = useState(false);
 
-  const available = useMemo(() => new Set(backend.health?.models ?? []), [backend.health]);
-  const { results, loading, error, setError } = usePredictions(
-    file,
-    selection,
-    available,
-    backend.reconnects,
-    backend.refresh,
-  );
+  const available = useMemo(() => new Set(status.ready), [status.ready]);
+  const { results, loading, error, setError } = usePredictions(engine, status, file, selection);
 
   useEffect(() => () => void (imageUrl && URL.revokeObjectURL(imageUrl)), [imageUrl]);
 
@@ -59,11 +54,11 @@ export default function App() {
 
   const busy = loading || preparing;
   const shown = modelsFor(selection).filter((m) => results[m]);
-  const statusText = backend.offline
+  const statusText = status.offline
     ? "Offline"
-    : backend.health
-      ? `${backend.health.models.length}/${MODEL_NAMES.length} models online`
-      : "Connecting";
+    : status.ready.length === 0
+      ? "Loading models"
+      : `${status.ready.length}/${MODEL_NAMES.length} models · ${status.backend}`;
 
   return (
     <div className="page">
@@ -75,7 +70,7 @@ export default function App() {
           <a href="#detect">Detect</a>
           <a href="#compare">Compare</a>
         </div>
-        <span className={`status-pill ${backend.offline ? "off" : ""}`}>
+        <span className={`status-pill ${status.offline ? "off" : status.ready.length ? "" : "pending"}`}>
           <span className="dot" aria-hidden />
           {statusText}
         </span>
@@ -104,13 +99,13 @@ export default function App() {
         </div>
       </header>
 
-      <StatusBanner health={backend.health} offline={backend.offline} onRetry={backend.refresh} />
+      <StatusBanner status={status} onRetry={engine.retry} />
 
       <UploadStudio
         hasFile={file !== null}
         busy={busy}
         selection={selection}
-        available={backend.health ? available : null}
+        available={status.ready.length || status.offline ? available : null}
         conf={conf}
         onFile={acceptFile}
         onSample={loadSample}
@@ -162,13 +157,17 @@ export default function App() {
         </section>
       )}
 
-      {backend.models.length > 0 && <MetricsTable models={backend.models} />}
+      <MetricsTable />
 
       <footer className="footer">
         <span className="logo">
           <span aria-hidden>✱</span> GEMSCAN
         </span>
-        <p className="micro">Uploaded images are processed in memory and never stored.</p>
+        <p className="micro">
+          {INFERENCE_MODE === "browser"
+            ? "Detection runs on your device. Images never leave your browser."
+            : "Uploaded images are processed in memory and never stored."}
+        </p>
       </footer>
     </div>
   );

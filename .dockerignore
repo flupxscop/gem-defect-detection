@@ -1,6 +1,7 @@
 *
 !app/
 !results/comparison.csv
+!results/comparison.json
 !requirements.txt
 !web/
 web/node_modules/

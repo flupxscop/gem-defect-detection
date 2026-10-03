@@ -5,11 +5,12 @@ Usage:
     python src/compare.py --samples 4 --conf 0.25
 
 Outputs in results/:
-    comparison.csv, comparison.md, comparison.png, side_by_side.png
+    comparison.csv, comparison.json, comparison.md, comparison.png, side_by_side.png
 """
 
 import argparse
 import csv
+import json
 import random
 import sys
 
@@ -102,11 +103,13 @@ def recommend(rows: list) -> tuple:
     return pick["model"], reason
 
 
-def write_csv(rows: list) -> None:
+def write_tables(rows: list) -> None:
     with open(RESULTS_DIR / "comparison.csv", "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=FIELDS)
         writer.writeheader()
         writer.writerows(rows)
+    # The web app bundles the JSON copy.
+    (RESULTS_DIR / "comparison.json").write_text(json.dumps(rows, indent=2) + "\n")
 
 
 def write_markdown(rows: list, pick: str, reason: str) -> None:
@@ -316,7 +319,7 @@ def main() -> None:
         rows.append(evaluate(name, split, args.imgsz, device))
 
     pick, reason = recommend(rows)
-    write_csv(rows)
+    write_tables(rows)
     write_markdown(rows, pick, reason)
     plot_comparison(rows)
     plot_side_by_side(names, split, data, args.conf, args.imgsz, device, args.samples)

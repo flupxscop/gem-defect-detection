@@ -1,16 +1,17 @@
 # GemScan: gemstone inclusion detection
 
-[![CI](https://github.com/GITHUB_REPO/actions/workflows/ci.yml/badge.svg)](https://github.com/GITHUB_REPO/actions/workflows/ci.yml)
+[![CI](https://github.com/flupxscop/gem-defect-detection/actions/workflows/ci.yml/badge.svg)](https://github.com/flupxscop/gem-defect-detection/actions/workflows/ci.yml)
 [![Live demo](https://img.shields.io/badge/demo-Hugging%20Face%20Space-yellow)](https://huggingface.co/spaces/ChantaroNtw/gemscan)
 [![Models](https://img.shields.io/badge/models-ONNX-blue)](https://huggingface.co/ChantaroNtw/gemscan-models)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 Detects inclusions (internal flaws) in diamond photos and compares two detector families trained under the
 same settings: **YOLO11s** (CNN) and **RT-DETR-L** (transformer). The project covers the full path from a
-labelled dataset to a deployed web app: data preparation, training, evaluation, ONNX export, a FastAPI
-inference service, a React front end, CI, and a free deployment on Hugging Face Spaces.
+labelled dataset to a deployed web app: data preparation, training, evaluation, ONNX export, in-browser
+inference with WebGPU, a FastAPI service for self-hosting, CI, and free hosting on Hugging Face.
 
-**Live demo:** https://chantarontw-gemscan.hf.space
+**Live demo:** https://chantarontw-gemscan.static.hf.space. The models run on your device, so photos never
+leave the browser.
 
 ![Model comparison](results/comparison.png)
 
@@ -45,22 +46,32 @@ Ground truth (green), YOLO11s (blue) and RT-DETR-L (orange) at confidence ≥ 0.
 3. **Noisy labels.** Some ground-truth boxes overlap or group several flaws into one box (row 3), which caps
    the precision any model can reach on this data.
 
-## Serving performance
+## Performance
 
 Full methodology, raw tables and rejected optimisations are in [docs/benchmarks.md](docs/benchmarks.md).
+All numbers were measured on an Apple M2 (8 GB).
 
-PERF_SUMMARY
+**In the browser (live demo)**
 
-| Footprint (local container, 2 CPUs) | |
-|---|---|
-| Cold start (container start → healthy, models warmed) | 2.4 s |
-| Memory, idle → under load | 430 → 683 MB |
-| Image dependencies | 291 MB, no PyTorch |
+| | WebGPU | WASM fallback |
+|---|---:|---:|
+| YOLO11s per image | 62 ms | 174 ms |
+| RT-DETR-L per image | 236 ms | 770 ms |
+| Page interactive / first model ready (first visit) | 0.36 s / 5.9 s | |
+| Both models ready, return visit (cached) | 4.8 s | |
 
-The server runs the exported ONNX models with plain numpy/OpenCV pre- and post-processing. Against Ultralytics
-running the same ONNX files it reproduces all 1,641 detections across 98 test and validation images
-(`scripts/check_parity.py`). Compared with serving the PyTorch weights it starts 2.4× faster and uses half the
-memory.
+**Self-hosted server (Docker, limited to 2 CPUs)**
+
+| | YOLO11s | RT-DETR-L |
+|---|---:|---:|
+| p50 / p99 latency, one client | 146 / 176 ms | 639 / 752 ms |
+| Throughput | 6.8 req/s | 1.6 req/s |
+| Cold start (both models loaded and warmed) | 2.4 s | |
+| Memory, idle → under load | 430 → 683 MB | |
+
+Three implementations of the same pipeline agree box for box. The Python server matches Ultralytics on all
+1,641 detections across 98 images (`scripts/check_parity.py`), the browser matches the server on WebGPU and
+WASM, and unit tests pin the TypeScript port to fixtures generated from the Python code.
 
 ## Architecture
 
@@ -71,45 +82,58 @@ flowchart LR
         TR --> EX[export.py]
     end
     EX -- ONNX + manifest --> HUB[(HF model repo<br/>pinned revision)]
-    subgraph Space ["Hugging Face Space (Docker, CPU)"]
-        API[FastAPI + ONNX Runtime] --> WEB[React app]
+    subgraph Live ["Live demo: HF static Space"]
+        WEB[React app] --> WK[Web Worker<br/>onnxruntime-web<br/>WebGPU / WASM]
+    end
+    HUB -- "download once,<br/>Cache Storage" --> WK
+    subgraph Self ["Self-hosted: Docker"]
+        API[FastAPI + ONNX Runtime] --- WEB2[React app]
     end
     HUB -- docker build --> API
-    User((Browser)) -- "POST /api/predict" --> API
 ```
 
-- **Model registry.** Weights live in a Hugging Face model repo, not in Git. The Docker build downloads them
-  from a pinned commit (`MODEL_REVISION`), so a deployment always knows exactly which models it serves.
-- **One container.** FastAPI serves both the API (`/api/*`) and the built front end, so there is a single URL
-  and no CORS in production.
-- **Bounded work.** One inference runs at a time using all cores, up to 16 requests queue, and anything beyond
-  that gets `503` with `Retry-After`.
+- **Inference in the browser.** The live demo is a static site. A Web Worker loads the ONNX models with
+  onnxruntime-web and runs them on WebGPU, falling back to multi-threaded WASM. Hosting costs nothing, there is
+  no server to scale or wake up, and uploaded photos stay on the device.
+- **Model registry.** Weights live in a Hugging Face model repo, not in Git. The web app and the Docker build
+  both load them from a pinned commit, so every deployment knows exactly which models it serves.
+- **Same pipeline in two languages.** Pre- and post-processing (OpenCV-style bilinear resize, letterbox, NMS,
+  RT-DETR decoding) exist in Python (`app/inference.py`) and TypeScript (`web/src/detect`), kept equal by
+  fixture tests.
+- **Self-hosting.** The Docker image serves the same front end in server mode (`VITE_INFERENCE=server`) with a
+  FastAPI API. It runs one inference at a time on all CPUs the container is allowed (read from the cgroup quota),
+  queues up to 16 requests, and returns `503` with `Retry-After` beyond that.
 
 ## Quick start
 
-Run the app in Docker (the build downloads the models):
+Front end only, with models running in the browser:
 
 ```bash
-docker build -t gemscan .
-docker run -p 7860:7860 gemscan
-# open http://localhost:7860
+cd web && npm install && npm run dev    # http://localhost:5173
 ```
 
-Develop with hot reload:
+Self-hosted server with the same UI:
+
+```bash
+docker build -t gemscan .               # downloads the models from the model repo
+docker run -p 7860:7860 gemscan         # http://localhost:7860
+```
+
+Server development with hot reload:
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-python scripts/fetch_models.py          # or export your own, see below
+python scripts/fetch_models.py
 uvicorn app.main:app --reload --port 8000
-
-cd web && npm install && npm run dev    # http://localhost:5173, proxies /api to :8000
+cd web && VITE_INFERENCE=server npm run dev    # proxies /api to :8000
 ```
 
 The checks CI runs:
 
 ```bash
 ruff check . && ruff format --check . && pytest
+cd web && npm test && npm run build
 ```
 
 ## Reproducing the models
@@ -131,20 +155,21 @@ RT-DETR-L 4 → 2), because batch 16 at 640 px fills an 8 GB Mac's shared memory
 
 ## Deployment
 
-Everything runs on free tiers: GitHub for code and CI, Hugging Face for the model repo and the Space
-(2 vCPU, 16 GB RAM).
+Free tiers only: GitHub for code and CI, Hugging Face for the model repo and a static Space.
 
 ```bash
 huggingface-cli login
-python scripts/publish_models.py --repo <user>/gemscan-models      # prints MODEL_REVISION
-python scripts/deploy_space.py --space <user>/gemscan \
-    --model-repo <user>/gemscan-models --revision <MODEL_REVISION>
+python scripts/publish_models.py --repo <user>/gemscan-models    # prints the commit to pin
+# set that commit as MODEL_REVISION in web/src/config.ts
+cd web && npm ci && npm run build && cd ..
+python scripts/deploy_space.py --space <user>/gemscan
 ```
 
-Free Spaces sleep after 48 hours without traffic, and the first visit afterwards takes about a minute while the
-container starts. The front end shows a "waking up" message and retries on its own.
+The Space sends COOP/COEP headers (configured in its README) so WASM can use multiple threads. Hugging Face
+Docker Spaces now require a paid plan, which is why the live demo runs the models client-side; the Docker image
+is for self-hosting on any container platform.
 
-## API
+## API (self-hosted server)
 
 | Method | Path | Description |
 |---|---|---|
@@ -154,7 +179,7 @@ container starts. The front end shows a "waking up" message and retries on its o
 | GET | `/api/docs` | OpenAPI UI |
 
 ```bash
-curl -F file=@stone.jpg -F model=both https://chantarontw-gemscan.hf.space/api/predict
+curl -F file=@stone.jpg -F model=both http://localhost:7860/api/predict
 ```
 
 ```json
@@ -178,8 +203,8 @@ unsupported or unreadable file, `422` invalid `model` or `conf`, `503` model una
 app/            FastAPI service: inference.py (ONNX detectors), main.py (routes), settings.py (env config)
 src/            Training pipeline: download, train, compare, export
 scripts/        check_parity, benchmark, fetch_models, publish_models, deploy_space
-web/            React + TypeScript + Vite front end
-tests/          API, inference and data-preparation tests
+web/            React + TypeScript + Vite front end; web/src/detect runs the models in a Web Worker
+tests/          API, inference, settings and data-preparation tests (web tests live next to the code)
 results/        Evaluation outputs (committed)
 docs/           Benchmarks
 ```
@@ -204,7 +229,8 @@ weights and the four sample images in `web/public/samples` carry the same licens
 
 - Small dataset: metrics on a 16-image test split vary noticeably between runs.
 - Detection only. No clarity grading on the GIA scale and no inspection of metal settings.
-- Inference is CPU-only on the free tier; RT-DETR-L takes about half a second per image.
+- The first visit downloads 169 MB of models; RT-DETR-L is heavy for low-end phones, where YOLO11s is the
+  practical choice.
 
 ## Roadmap
 

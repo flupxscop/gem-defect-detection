@@ -1,8 +1,8 @@
 """ONNX Runtime detectors for the YOLO11 and RT-DETR exports.
 
 Pre- and post-processing mirror Ultralytics so results match `model.predict`:
-YOLO letterboxes the image and needs NMS; RT-DETR stretches it to a square
-and returns at most 300 boxes with no NMS. Resizing uses OpenCV's bilinear
+YOLO letterboxes the image and needs NMS; RT-DETR stretches it to a square,
+and its export already selects the top 300 queries, so it needs no NMS. Resizing uses OpenCV's bilinear
 filter like Ultralytics; Pillow's antialiased resize shifts scores by ~0.05.
 
 Images are RGB uint8 arrays of shape (height, width, 3).
@@ -117,9 +117,8 @@ class RtDetrDetector(Detector):
         return to_tensor(image), restore
 
     def decode(self, output, conf):
-        scores_all = output[:, 4:]
-        classes = scores_all.argmax(1)
-        scores = scores_all[np.arange(len(classes)), classes]
+        # Rows are [cx, cy, w, h, score, class_index], boxes normalised to 0-1.
+        scores, classes = output[:, 4], output[:, 5].astype(int)
         keep = scores > conf
         order = np.argsort(-scores[keep])
         boxes = xywh_to_xyxy(output[keep, :4])[order]

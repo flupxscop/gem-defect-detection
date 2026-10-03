@@ -1,4 +1,4 @@
-// Same origin by default: the backend serves this app in production, and Vite proxies /api in development.
+// Server mode only. Same origin by default: the backend serves the app, and Vite proxies /api in development.
 const API_URL = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 
 export type ModelName = "yolo11s" | "rtdetr-l";
@@ -25,13 +25,6 @@ export interface Health {
   models: ModelName[];
 }
 
-export interface ModelSummary {
-  name: ModelName;
-  label: string;
-  architecture: string;
-  metrics: Record<string, number | string> | null;
-}
-
 // Request every box above this once; the confidence slider then filters locally.
 export const FETCH_CONF = 0.05;
 
@@ -53,7 +46,6 @@ async function errorMessage(res: Response): Promise<string> {
 }
 
 export const getHealth = () => request<Health>("/api/health");
-export const getModels = () => request<ModelSummary[]>("/api/models");
 
 export function predict(file: File, model: Selection, signal?: AbortSignal) {
   const form = new FormData();

@@ -915,3 +915,17 @@ td.serif-num {
 .footer .micro {
   color: var(--ink-2);
 }
+
+.status-pill.pending .dot {
+  background: #eda100;
+}
+
+.download {
+  display: block;
+  font-weight: 600;
+}
+
+.band-note {
+  margin-top: 16px;
+  color: var(--band-ink-2);
+}

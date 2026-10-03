@@ -51,8 +51,9 @@ def test_yolo_decode_filters_by_confidence():
 def test_rtdetr_boxes_are_normalised_and_scaled_to_image():
     detector = make(RtDetrDetector)
     _, restore = detector.preprocess(np.zeros((300, 600, 3), np.uint8))
-    output = np.array([[0.5, 0.5, 0.2, 0.2, 0.9], [0.1, 0.1, 0.1, 0.1, 0.05]], np.float32)
+    output = np.array([[0.5, 0.5, 0.2, 0.2, 0.9, 1], [0.1, 0.1, 0.1, 0.1, 0.05, 0]], np.float32)
 
-    boxes, scores, _ = detector.decode(output, conf=0.25)
+    boxes, scores, classes = detector.decode(output, conf=0.25)
     assert np.allclose(restore(boxes), [[240, 120, 360, 180]])
-    assert len(scores) == 1
+    assert scores.tolist() == [np.float32(0.9)]
+    assert classes.tolist() == [1]

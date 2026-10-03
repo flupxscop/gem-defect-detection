@@ -6,10 +6,36 @@ All numbers below were measured, not estimated. Reproduce them with the commands
 
 | Name | Hardware | Notes |
 |---|---|---|
-| **Local container** | Apple M2 (8 GB), Docker Desktop, container limited to `--cpus 2 --memory 3g` | linux/arm64, mirrors the 2-vCPU free tier |
-| **Hugging Face Space** | Free "CPU basic" tier (2 vCPU, 16 GB) | linux/x86_64, the production deployment |
+| **Browser (production)** | Apple M2 (8 GB), Chromium | The live demo runs both models in the visitor's browser with onnxruntime-web 1.30 |
+| **Local container** | Apple M2 (8 GB), Docker Desktop, container limited to `--cpus 2 --memory 3g` | linux/arm64, the self-hosted server |
 
-## Serving: load test
+## Browser inference (live demo)
+
+Measured on https://chantarontw-gemscan.static.hf.space and the local production build (`vite preview`).
+
+| Metric | WebGPU | WASM (4 threads) |
+|---|---:|---:|
+| YOLO11s, median per image | 62 ms | 174 ms |
+| RT-DETR-L, median per image | 236 ms | 770 ms |
+
+| Load | Time |
+|---|---:|
+| Page interactive | 0.36 s |
+| First visit: YOLO11s ready (38 MB download) | 5.9 s |
+| First visit: both models ready (169 MB) | 10.9 s |
+| Return visit: both models ready (Cache Storage, no download) | 4.8 s |
+| Return visit: click a sample → both results on screen | 0.7 s |
+
+Download times depend on the visitor's connection; model files are cached in Cache Storage keyed by the pinned
+model-repo commit, so they are fetched once. WASM threads need cross-origin isolation, which the Space enables
+with COOP/COEP headers; without it onnxruntime-web falls back to one thread.
+
+**Parity with the server.** On the four sample images at confidence ≥ 0.25 the browser produced the same boxes
+as the Python server: YOLO11s 3/3 and RT-DETR-L 62/62 matched (IoU ≥ 0.9, Δconf ≤ 0.02), on both WebGPU and WASM.
+`web/src/detect/parity.test.ts` pins the TypeScript pre- and post-processing to fixtures generated from the
+Python code (`scripts/make_web_fixtures.py`), and runs in CI.
+
+## Self-hosted server: load test
 
 ```bash
 docker run -d --name gemscan --cpus 2 --memory 3g -p 7860:7860 gemscan
@@ -20,20 +46,25 @@ Each request uploads one 640×640 sample JPEG (30–45 KB). Latency is measured 
 from the `Server-Timing` header. Requests are processed one at a time (`MAX_CONCURRENCY=1`) and queue beyond
 that, so throughput is flat and latency grows with queue depth. No request failed.
 
-**Local container (2 CPUs)**
-
 | Model | Concurrency | Throughput (req/s) | p50 (ms) | p95 (ms) | p99 (ms) | Model time (ms) |
 |---|---:|---:|---:|---:|---:|---:|
-| YOLO11s | 1 | 6.7 | 146 | 159 | 165 | 143 |
-| YOLO11s | 4 | 6.8 | 579 | 659 | 678 | 147 |
+| YOLO11s | 1 | 6.8 | 146 | 156 | 176 | 142 |
+| YOLO11s | 4 | 6.9 | 576 | 604 | 605 | 144 |
 | YOLO11s | 16 | 6.8 | 2322 | 2337 | 2339 | 145 |
-| RT-DETR-L | 1 | 1.5 | 650 | 690 | 707 | 648 |
-| RT-DETR-L | 4 | 1.5 | 2625 | 2724 | 2736 | 658 |
+| RT-DETR-L | 1 | 1.6 | 639 | 657 | 752 | 638 |
+| RT-DETR-L | 4 | 1.5 | 2594 | 2682 | 2688 | 649 |
 | RT-DETR-L | 16 | 1.5 | 10450 | 10533 | 10541 | 654 |
 
-**Hugging Face Space (production)**
+### Thread pool sized from the container's CPU quota
 
-HF_SPACE_RESULTS
+`docker run --cpus 2` (and Kubernetes CPU limits) set a cgroup quota but `os.cpu_count()` still reports every
+host core. Sizing ONNX Runtime's thread pool from it oversubscribes the quota and the kernel throttles the
+container. `app/settings.py` reads `/sys/fs/cgroup/cpu.max` instead:
+
+| Same container, `--cpus 2` | p50 YOLO11s | p50 RT-DETR-L |
+|---|---:|---:|
+| 8 threads (host core count) | 810 ms | 2898 ms |
+| 2 threads (cgroup quota) | **146 ms** | **639 ms** |
 
 ## Container footprint
 
@@ -57,9 +88,9 @@ Measured in-process on the M2 with 2 threads, both models loaded:
 | YOLO11s predict | **88 ms** | 144 ms |
 | RT-DETR-L predict | **486 ms** | 645 ms |
 
-PyTorch is faster per image on Apple Silicon, whose CPU kernels it optimises well. The free host only gives a
-small CPU and its instances sleep when idle, so startup time, memory and image size matter more there; the
-production latency on x86 is in the Hugging Face table above.
+PyTorch is faster per image on Apple Silicon, whose CPU kernels it optimises well. For a small CPU host that
+scales to zero, startup time, memory and image size matter more, and ONNX is also what makes in-browser
+inference possible.
 
 ## Correctness of the ONNX pipeline
 
